@@ -9,6 +9,55 @@ const char *handler_path = "bin/Release/crashpad_handler.exe";
 const char *handler_path = "bin/Release/crashpad_handler";
 #endif
 
+void initialize_memory(char *mem) {
+    sentry_add_breadcrumb(sentry_value_new_breadcrumb(0, "Initializing memory"));
+    memset(mem, 1, 100);
+}
+
+void startup(void) {
+    sentry_set_transaction("startup");
+    sentry_set_level(SENTRY_LEVEL_ERROR);
+
+    sentry_add_breadcrumb(sentry_value_new_breadcrumb(0, "Setting user to John Doe"));
+
+    sentry_value_t user = sentry_value_new_object();
+    sentry_value_set_by_key(user, "id", sentry_value_new_int32(42));
+    sentry_value_set_by_key(user, "email", sentry_value_new_string("john.doe@example.org"));
+    sentry_value_set_by_key(user, "username", sentry_value_new_string("John Doe"));
+    sentry_set_user(user);
+
+    initialize_memory((char *)0x0);
+
+    sentry_add_breadcrumb(sentry_value_new_breadcrumb(0, "Finished setup"));
+}
+
+void send_event(void) {
+    sentry_set_transaction("startup");
+
+    sentry_add_breadcrumb(sentry_value_new_breadcrumb(0, "Configuring GPU Context"));
+
+    sentry_value_t gpu = sentry_value_new_object();
+    sentry_value_set_by_key(gpu, "name", sentry_value_new_string("AMD Radeon Pro 560"));
+    sentry_value_set_by_key(gpu, "vendor_name", sentry_value_new_string("Apple"));
+    sentry_value_set_by_key(gpu, "memory_size", sentry_value_new_int32(4096));
+    sentry_value_set_by_key(gpu, "api_type", sentry_value_new_string("Metal"));
+    sentry_value_set_by_key(gpu, "multi_threaded_rendering", sentry_value_new_bool(1));
+    sentry_value_set_by_key(gpu, "version", sentry_value_new_string("Metal"));
+
+    sentry_value_t os = sentry_value_new_object();
+    sentry_value_set_by_key(os, "name", sentry_value_new_string("macOS"));
+    sentry_value_set_by_key(os, "version", sentry_value_new_string("10.14.6 (18G95)"));
+
+    sentry_value_t contexts = sentry_value_new_object();
+    sentry_value_set_by_key(contexts, "gpu", gpu);
+    sentry_value_set_by_key(contexts, "os", os);
+
+    sentry_value_t event = sentry_value_new_event();
+    sentry_value_set_by_key(event, "message", sentry_value_new_string("Invariant Violation"));
+    sentry_value_set_by_key(event, "contexts", contexts);
+    sentry_capture_event(event);
+}
+
 int main(void) {
     sentry_options_t *options = sentry_options_new();
 
@@ -17,49 +66,12 @@ int main(void) {
     sentry_options_set_release(options, "5fd7a6cd");
     sentry_options_set_database_path(options, "sentry-db");
     sentry_options_set_debug(options, 1);
-    sentry_options_add_attachment(options, "example", "../example.c");
+    sentry_options_add_attachment(options, "application.log",
+                                  "application.log");
 
     sentry_init(options);
+    startup();
+    send_event();
 
-    sentry_set_transaction("tran");
-    sentry_set_level(SENTRY_LEVEL_WARNING);
-    sentry_set_extra("extra stuff", sentry_value_new_string("some value"));
-    sentry_set_tag("expected-tag", "some value");
-    sentry_set_tag("not-expected-tag", "some value");
-    sentry_remove_tag("not-expected-tag");
-    sentry_set_fingerprint("foo", "bar", NULL);
-
-    sentry_value_t default_crumb =
-        sentry_value_new_breadcrumb(0, "default level is info");
-    sentry_add_breadcrumb(default_crumb);
-
-    sentry_value_t debug_crumb =
-        sentry_value_new_breadcrumb("http", "debug crumb");
-    sentry_value_set_by_key(debug_crumb, "category",
-                            sentry_value_new_string("example!"));
-    sentry_value_set_by_key(debug_crumb, "level",
-                            sentry_value_new_string("debug"));
-    sentry_add_breadcrumb(debug_crumb);
-
-    for (size_t i = 0; i < 101; i++) {
-        char buffer[4];
-        sprintf(buffer, "%zu", i);
-        sentry_add_breadcrumb(sentry_value_new_breadcrumb(0, buffer));
-    }
-
-    sentry_value_t user = sentry_value_new_object();
-    sentry_value_set_by_key(user, "id", sentry_value_new_int32(42));
-    sentry_value_set_by_key(user, "username",
-                            sentry_value_new_string("some_name"));
-    sentry_set_user(user);
-
-    // memset((char *)0x0, 1, 100);
-
-    sentry_value_t event = sentry_value_new_event();
-    sentry_value_set_by_key(event, "message",
-                            sentry_value_new_string("Hello World!"));
-    sentry_capture_event(event);
-
-    // make sure everything flushes
     sentry_shutdown();
 }
